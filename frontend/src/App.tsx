@@ -6,6 +6,7 @@ import {
   getToken,
   saveToken,
   type Category,
+  type ExpenseCategory,
   type MonthlySummary,
   type Transaction,
   type TransactionPage,
@@ -43,6 +44,7 @@ function App() {
   const [summary, setSummary] = useState<MonthlySummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -55,16 +57,18 @@ function App() {
       const from = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-01`;
       const nextMonth = new Date(month.getFullYear(), month.getMonth() + 1, 1);
       const to = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`;
-      const [nextSummary, page, nextCategories] = await Promise.all([
+      const [nextSummary, page, nextCategories, nextExpenseCategories] = await Promise.all([
         apiRequest<MonthlySummary>(`/reports/summary?${monthParams}`),
         apiRequest<TransactionPage>(
           `/transactions?from=${from}&to=${to}&limit=100&sort=date&order=desc`,
         ),
         apiRequest<Category[]>('/categories'),
+        apiRequest<ExpenseCategory[]>(`/reports/by-category?${monthParams}`),
       ]);
       setSummary(nextSummary);
       setTransactions(page.data);
       setCategories(nextCategories);
+      setExpenseCategories(nextExpenseCategories);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
         clearToken();
@@ -91,6 +95,7 @@ function App() {
     setSummary(null);
     setTransactions([]);
     setCategories([]);
+    setExpenseCategories([]);
   }
 
   if (!token) {
@@ -108,9 +113,8 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="#" onClick={() => setView('overview')}>
-          <span className="brand-mark">f</span>
-          <span>fintrack<span className="brand-dot">.</span></span>
+        <a className="brand" href="#" aria-label="Monetra — visão geral" onClick={() => setView('overview')}>
+          <img className="brand-logo" src="/monetra-logo-light.png" alt="Monetra" />
         </a>
         <div className="sidebar-label">MENU</div>
         <nav className="nav-list" aria-label="Navegação principal">
@@ -161,7 +165,7 @@ function App() {
             </div>
             <div className="heading-actions">
               <MonthPicker month={month} onChange={setMonth} />
-              {view !== 'categories' && (
+              {view === 'transactions' && (
                 <button className="primary-button" onClick={() => setShowTransactionForm(true)}>
                   <span>＋</span> Nova transação
                 </button>
@@ -176,6 +180,7 @@ function App() {
             <Overview
               summary={summary}
               transactions={recentTransactions}
+              expenseCategories={expenseCategories}
               onSeeAll={() => setView('transactions')}
               onAdd={() => setShowTransactionForm(true)}
             />
@@ -248,60 +253,113 @@ function MonthPicker({ month, onChange }: { month: Date; onChange: (date: Date) 
 function Overview({
   summary,
   transactions,
+  expenseCategories,
   onSeeAll,
   onAdd,
 }: {
   summary: MonthlySummary | null;
   transactions: Transaction[];
+  expenseCategories: ExpenseCategory[];
   onSeeAll: () => void;
   onAdd: () => void;
 }) {
-  const cards = [
-    { label: 'Saldo do mês', amount: summary?.balanceCents ?? 0, icon: '↗', tone: 'purple', note: 'Receitas menos despesas' },
-    { label: 'Receitas', amount: summary?.incomeCents ?? 0, icon: '↓', tone: 'green', note: 'Total recebido no mês' },
-    { label: 'Despesas', amount: summary?.expenseCents ?? 0, icon: '↑', tone: 'orange', note: 'Total gasto no mês' },
-  ];
   return (
-    <>
-      <section className="summary-grid" aria-label="Resumo financeiro">
-        {cards.map((card) => (
-          <article className="summary-card" key={card.label}>
-            <div className="summary-card-top">
-              <span>{card.label}</span>
-              <span className={`summary-icon ${card.tone}`}>{card.icon}</span>
-            </div>
-            <strong className="summary-amount">{money(card.amount)}</strong>
-            <span className="summary-note">{card.note}</span>
-          </article>
-        ))}
-      </section>
-      <div className="content-grid">
-        <section className="panel transactions-panel">
-          <div className="panel-heading">
-            <div><h2>Transações recentes</h2><p>Suas movimentações mais recentes</p></div>
-            <button className="text-button" onClick={onSeeAll}>Ver todas <span>→</span></button>
+    <div className="dashboard-overview">
+      <section className="balance-hero" aria-label="Resumo financeiro do mês">
+        <div className="balance-hero-glow" />
+        <div className="balance-hero-top">
+          <div className="balance-copy">
+            <span className="balance-kicker"><span className="balance-kicker-icon">↗</span> RESUMO DO MÊS</span>
+            <h2>Um olhar claro<br />sobre suas finanças.</h2>
+            <p>Seu saldo é a diferença entre tudo que entrou e saiu.</p>
+            <strong className="balance-amount">{summary ? money(summary.balanceCents) : '—'}</strong>
+            <span className="balance-caption">saldo neste período</span>
           </div>
-          <TransactionTable transactions={transactions} compact />
-          {transactions.length === 0 && (
+          <div className="balance-metrics">
+            <article className="balance-metric">
+              <span><i className="metric-dot income-dot" /> Entradas</span>
+              <strong>{summary ? money(summary.incomeCents) : '—'}</strong>
+            </article>
+            <article className="balance-metric">
+              <span><i className="metric-dot expense-dot" /> Saídas</span>
+              <strong>{summary ? money(summary.expenseCents) : '—'}</strong>
+            </article>
+          </div>
+        </div>
+        <div className="balance-hero-bottom">
+          <span><i className="hero-status-dot" /> Acompanhamento mensal</span>
+          <button onClick={onAdd}><span>＋</span> Adicionar movimentação</button>
+        </div>
+      </section>
+
+      <div className="dashboard-grid">
+        <section className="panel spending-panel">
+          <div className="panel-heading">
+            <div><h2>Para onde vai seu dinheiro</h2><p>Despesas organizadas por categoria</p></div>
+            <span className="panel-period">ESTE MÊS</span>
+          </div>
+          {expenseCategories.length > 0 ? (
+            <div className="spending-list">
+              {expenseCategories.slice(0, 5).map((category, index) => {
+                const total = summary?.expenseCents ?? 0;
+                const percentage = total > 0 ? (category.expenseCents / total) * 100 : 0;
+                return (
+                  <article className="spending-row" key={category.categoryId}>
+                    <div className="spending-row-top">
+                      <span className={`spending-mark spending-mark-${index % 5}`}>{['◈', '⌂', '✿', '▧', '◉'][index % 5]}</span>
+                      <strong>{category.name}</strong>
+                      <span className="spending-amount">{money(category.expenseCents)}</span>
+                    </div>
+                    <div className="spending-track" aria-label={`${Math.round(percentage)}% das despesas`}>
+                      <span className={`spending-fill spending-fill-${index % 5}`} style={{ width: `${percentage}%` }} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
             <EmptyState
-              title="Tudo começa com um registro"
-              description="Adicione sua primeira receita ou despesa para acompanhar seu dinheiro."
-              action="Adicionar transação"
+              title="Ainda sem despesas neste mês"
+              description="Quando você registrar uma despesa, ela aparecerá aqui por categoria."
+              action="Adicionar despesa"
               onAction={onAdd}
             />
           )}
         </section>
-        <section className="panel insight-panel">
-          <div className="insight-top">
-            <span className="insight-icon">✳</span>
-            <span className="insight-label">DICA FINANCEIRA</span>
+
+        <section className="panel recent-panel">
+          <div className="panel-heading">
+            <div><h2>Atividade recente</h2><p>Suas últimas movimentações</p></div>
+            <button className="text-button" onClick={onSeeAll}>Ver todas <span>→</span></button>
           </div>
-          <h2>Pequenos passos, grandes conquistas.</h2>
-          <p>Registrar cada gasto é o primeiro passo para entender seus hábitos e alcançar seus objetivos.</p>
-          <div className="insight-decoration"><span>♡</span><i /><i /><i /></div>
+          {transactions.length > 0 ? (
+            <div className="recent-list">
+              {transactions.map((transaction) => (
+                <article className="recent-row" key={transaction.id}>
+                  <span className={`transaction-type-icon ${transaction.type.toLowerCase()}`}>
+                    {transaction.type === 'INCOME' ? '↓' : '↑'}
+                  </span>
+                  <span className="recent-description">
+                    <strong>{transaction.description || transaction.category.name}</strong>
+                    <small>{transaction.category.name} <i /> {formatDate(transaction.date)}</small>
+                  </span>
+                  <strong className={`recent-amount ${transaction.type === 'INCOME' ? 'positive' : ''}`}>
+                    {transaction.type === 'INCOME' ? '+' : '−'}{money(transaction.amountCents)}
+                  </strong>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Sua atividade começa aqui"
+              description="Registre uma receita ou despesa e acompanhe tudo por aqui."
+              action="Adicionar movimentação"
+              onAction={onAdd}
+            />
+          )}
         </section>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -524,19 +582,23 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (token: string) => v
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <a className="brand auth-brand" href="#"><span className="brand-mark">f</span><span>fintrack<span className="brand-dot">.</span></span></a>
+        <a className="brand auth-brand" href="#" aria-label="Monetra">
+          <img className="brand-logo" src="/monetra-logo-light.png" alt="Monetra" />
+        </a>
         <div className="auth-story-copy">
           <span className="form-kicker">MAIS CLAREZA. MAIS CONTROLE.</span>
           <h1>Seu dinheiro,<br />no caminho certo.</h1>
           <p>Uma vida financeira mais leve começa com escolhas conscientes. Organize, acompanhe e avance.</p>
           <div className="auth-quote"><span>“</span><div><strong>O segredo para seguir em frente é começar.</strong><small>Um passo de cada vez.</small></div></div>
         </div>
-        <span className="auth-footer">FINTRACK · SUAS FINANÇAS EM EQUILÍBRIO</span>
+        <span className="auth-footer">MONETRA · SUAS FINANÇAS EM EQUILÍBRIO</span>
         <div className="auth-decoration decor-one" /><div className="auth-decoration decor-two" />
       </section>
       <section className="auth-form-side">
         <div className="auth-form-wrap">
-          <div className="mobile-brand"><span className="brand-mark">f</span> fintrack<span className="brand-dot">.</span></div>
+          <a className="mobile-brand" href="#" aria-label="Monetra">
+            <img className="brand-logo" src="/monetra-logo.png" alt="Monetra" />
+          </a>
           <span className="form-kicker">{registering ? 'COMECE SUA JORNADA' : 'BEM-VINDO DE VOLTA'}</span>
           <h2>{registering ? 'Crie sua conta' : 'Acesse sua conta'}</h2>
           <p className="auth-subtitle">{registering ? 'É rápido e gratuito. Vamos organizar suas finanças?' : 'Entre para continuar cuidando bem do seu dinheiro.'}</p>

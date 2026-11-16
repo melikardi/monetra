@@ -27,6 +27,12 @@ export interface MonthlySummary {
   balanceCents: number;
 }
 
+export interface ExpenseCategory {
+  categoryId: string;
+  name: string;
+  expenseCents: number;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
