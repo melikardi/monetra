@@ -1,4 +1,4 @@
-# FinTrack
+# Monetra
 
 API REST de finanças pessoais: receitas, despesas, orçamentos e relatórios.
 
